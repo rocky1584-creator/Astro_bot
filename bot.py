@@ -1,39 +1,38 @@
-import os
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-
-app = Flask(__name__)
+import os
 
 TOKEN = os.getenv("BOT_TOKEN")
+app = Flask(__name__)
 
-# --- Telegram Handlers ---
+# --- Telegram Commands ---
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🌞 Welcome to AstroGuru! Type /daily to receive your astrology message.")
 
 async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from datetime import date
-    today = date.today().strftime('%A, %d %B %Y')
-    msg = f"✨ {today}\nYour stars suggest calmness and clarity today. Focus on inner peace and gratitude."
-    await update.message.reply_text(msg)
+    await update.message.reply_text("✨ Here’s your astrology message for today!")
 
-# Create the Telegram bot application
+# --- Telegram Webhook Setup ---
 application = Application.builder().token(TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("daily", daily))
 
-# --- Flask Route for Telegram Webhook ---
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    application.update_queue.put_nowait(update)
+@app.route(f"/{TOKEN}", methods=["POST"])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    await application.process_update(update)
     return "ok"
 
-@app.route('/')
+@app.route("/")
 def index():
-    return "Astrology Bot is active 🌟"
+    return "Bot is running."
 
 if __name__ == "__main__":
-    # Start Flask app (Render will run this)
-    app.run(port=5000)
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        url_path=TOKEN,
+        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}",
+    )
