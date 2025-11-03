@@ -1,33 +1,41 @@
 import os
-from flask import Flask
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Load token from environment variable
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ TELEGRAM_TOKEN is not set in environment variables.")
+APP_URL = os.getenv("RENDER_EXTERNAL_URL")
 
-# Create Flask app (Render uses this for health checks)
+if not TOKEN:
+    raise ValueError("❌ TELEGRAM_TOKEN not found in environment variables!")
+
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "✅ Astrology Telegram Bot is running on Render."
-
-# Define command
+# Telegram command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🌟 Hello! Your Astrology Bot is live and ready to guide you.")
+    await update.message.reply_text("🌟 Hello! Your Astrology Bot is now live and running via Render.")
 
-# Main block for polling
+# Create bot app
+application = Application.builder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+
+# Webhook endpoint — Telegram sends updates here
+@app.route(f"/{TOKEN}", methods=["POST"])
+async def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return "OK", 200
+
+@app.route("/")
+def home():
+    return "✅ Astrology Bot is running on Render.", 200
+
 if __name__ == "__main__":
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
+    # Set webhook URL for Telegram
+    webhook_url = f"{APP_URL}/{TOKEN}"
+    print(f"🚀 Setting webhook to: {webhook_url}")
+    application.bot.set_webhook(url=webhook_url)
 
-    print("🚀 Bot started successfully. Waiting for messages...")
-    application.run_polling()        application.bot.set_webhook(url=webhook_url)
-        print(f"Webhook set to {webhook_url}")
-    else:
-        print("Missing APP_URL or TOKEN, cannot set webhook.")
-    
+    # Run Flask app (Render exposes this webserver)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
