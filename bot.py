@@ -3,34 +3,40 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Get your Telegram token and Render URL from environment variables
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-APP_URL = os.getenv("RENDER_EXTERNAL_URL")  # Render sets this automatically
+# Load environment variables
+TOKEN = os.getenv("TELEGRAM_TOKEN")  # or os.getenv("TOKEN") if you renamed
+APP_URL = os.getenv("RENDER_EXTERNAL_URL")
 
 app = Flask(__name__)
 
+# --- Telegram bot logic ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🌟 Hello! Your Astrology Bot is now live.")
+    await update.message.reply_text("🌟 Hello! Your Astrology Bot is now live on Render!")
+
+# Create Telegram Application
+application = Application.builder().token(TOKEN).build()
+
+# Add command handlers
+application.add_handler(CommandHandler("start", start))
+
+# Webhook route
+@app.route("/" + TOKEN, methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.update_queue.put_nowait(update)
+    return "ok"
 
 @app.route("/")
-def home():
-    return "Astro Bot is running!"
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
-    application.create_task(application.process_update(update))
-    return "OK"
+def index():
+    return "Astro Bot is running."
 
 if __name__ == "__main__":
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    
-    # Set webhook to Render URL
-    if APP_URL:
+    # Set webhook (important for Render)
+    if APP_URL and TOKEN:
         webhook_url = f"{APP_URL}/{TOKEN}"
-        print("Setting webhook to:", webhook_url)
-        application.bot.set_webhook(webhook_url)
+        application.bot.set_webhook(url=webhook_url)
+        print(f"Webhook set to {webhook_url}")
+    else:
+        print("Missing APP_URL or TOKEN, cannot set webhook.")
     
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
